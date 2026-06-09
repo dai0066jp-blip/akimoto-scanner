@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>スキャン画面（秋本・外付け）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #111;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 16px;
+    }
+    h1 { font-size: 18px; margin: 8px 0 4px; text-align: center; }
+    p { font-size: 13px; margin: 0 0 12px; text-align: center; color: #ccc; }
+    #reader { width: 100%; max-width: 420px; margin-top: 8px; }
+    #status { margin-top: 12px; font-size: 14px; text-align: center; color: #8be9fd; word-break: break-all; }
+    #error { margin-top: 4px; font-size: 12px; text-align: center; color: #ff5555; }
+    button, select {
+      margin-top: 16px;
+      padding: 10px 18px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: none;
+    }
+    button { background: #00b894; color: #fff; }
+    select { background: #222; color: #fff; }
+  </style>
+</head>
+<body>
+  <h1>バーコード / QR スキャン</h1>
+  <p>カメラへのアクセスを許可して、枠の中にコードを合わせてください。</p>
+
+  <div id="reader"></div>
+  <div id="status">カメラ起動中...</div>
+  <div id="error"></div>
+
+  <select id="cameraSelect" style="display:none;"></select>
+  <button id="startSelectedBtn" style="display:none;">このカメラで開始</button>
+
+  <button id="stopBtn" style="display:none;">スキャン停止</button>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const errorEl = document.getElementById("error");
+    const stopBtn = document.getElementById("stopBtn");
+    const cameraSelect = document.getElementById("cameraSelect");
+    const startSelectedBtn = document.getElementById("startSelectedBtn");
+
+    let html5QrCode = null;
+    let isRedirecting = false;
+
+    /************************************************************
+     * スキャナ起動（背面カメラ優先・最終的に選択も可能）
+     ************************************************************/
+    async function startScanner() {
+      const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+      html5QrCode = new Html5Qrcode("reader");
+
+      const cameras = await Html5Qrcode.getCameras().catch(() => null);
+      if (!cameras || cameras.length === 0) {
+        statusEl.textContent = "カメラが見つかりません。";
+        return;
+      }
+
+      // 1. facingMode: "environment" を試す（iPhone / Android 共通）
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          onScanSuccess,
+          onScanFailure
+        );
+        statusEl.textContent = "スキャン中... コードを枠内に合わせてください。";
+        stopBtn.style.display = "inline-block";
+        return;
+      } catch (e) {
+        console.log("environment 失敗 → fallback", e);
+      }
+
+      // 2. ラベルから背面カメラらしきものを探す
+      let backCamera = cameras.find(cam =>
+        (cam.label || "").toLowerCase().includes("back") ||
+        (cam.label || "").toLowerCase().includes("rear") ||
+        (cam.label || "").toLowerCase().includes("environment")
+      );
+
+      if (backCamera) {
+        try {
+          await html5QrCode.start(
+            backCamera.id,
+            config,
+            onScanSuccess,
+            onScanFailure
+          );
+          statusEl.textContent = "スキャン中... コードを枠内に合わせてください。";
+          stopBtn.style.display = "inline-block";
+          return;
+        } catch (e) {
+          console.log("backCamera 失敗 → fallback2", e);
+        }
+      }
+
+      // 3. 最終手段：ユーザーにカメラ選択させる
+      cameraSelect.style.display = "block";
+      startSelectedBtn.style.display = "block";
+
+      cameras.forEach(cam => {
+        const opt = document.createElement("option");
+        opt.value = cam.id;
+        opt.textContent = cam.label || "カメラ";
+        cameraSelect.appendChild(opt);
+      });
+
+      startSelectedBtn.onclick = async () => {
+        const id = cameraSelect.value;
+        try {
+          await html5QrCode.start(
+            id,
+            config,
+            onScanSuccess,
+            onScanFailure
+          );
+          statusEl.textContent = "スキャン中... コードを枠内に合わせてください。";
+          stopBtn.style.display = "inline-block";
+          cameraSelect.style.display = "none";
+          startSelectedBtn.style.display = "none";
+        } catch (e) {
+          errorEl.textContent = "選択したカメラの起動に失敗しました: " + e;
+        }
+      };
+    }
+
+    /************************************************************
+     * スキャン成功時：親（GAS）へ結果を返す（postMessage）
+     ************************************************************/
+    function onScanSuccess(decodedText) {
+      if (isRedirecting) return;
+      isRedirecting = true;
+
+      statusEl.textContent = "読み取り成功: " + decodedText;
+      if (navigator.vibrate) navigator.vibrate(100);
+
+      // 親ウィンドウ（GAS）へ JAN / コードを返す
+      try {
+        window.opener.postMessage(
+          { type: "SCAN_SUCCESS", code: decodedText },
+          "https://script.google.com"   // ★ 必ず GAS の origin
+        );
+      } catch (e) {
+        console.log("postMessage 失敗:", e);
+      }
+
+      // 少し待ってから自分を閉じる
+      setTimeout(() => {
+        window.close();
+      }, 300);
+    }
+
+    function onScanFailure(error) {
+      // 読み取り失敗は無視（ログだけ残す）
+      // console.log("scan failure:", error);
+    }
+
+    stopBtn.addEventListener("click", () => {
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+          statusEl.textContent = "スキャンを停止しました。";
+          stopBtn.style.display = "none";
+        }).catch(err => {
+          errorEl.textContent = "停止に失敗しました: " + err;
+        });
+      }
+    });
+
+    window.addEventListener("load", startScanner);
+  </script>
+</body>
+</html>
