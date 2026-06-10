@@ -60,7 +60,7 @@
     let isRedirecting = false;
 
     /************************************************************
-     * スキャナ起動（背面カメラ優先・最終的に選択も可能）
+     * スキャナ起動（背面カメラ優先）ｖ6.10
      ************************************************************/
     async function startScanner() {
       const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
@@ -72,7 +72,7 @@
         return;
       }
 
-      // 1. facingMode: "environment" を試す（iPhone / Android 共通）
+      // 1. facingMode: environment
       try {
         await html5QrCode.start(
           { facingMode: "environment" },
@@ -83,11 +83,9 @@
         statusEl.textContent = "スキャン中... コードを枠内に合わせてください。";
         stopBtn.style.display = "inline-block";
         return;
-      } catch (e) {
-        console.log("environment 失敗 → fallback", e);
-      }
+      } catch (e) {}
 
-      // 2. ラベルから背面カメラらしきものを探す
+      // 2. ラベルから背面カメラを探す
       let backCamera = cameras.find(cam =>
         (cam.label || "").toLowerCase().includes("back") ||
         (cam.label || "").toLowerCase().includes("rear") ||
@@ -105,12 +103,10 @@
           statusEl.textContent = "スキャン中... コードを枠内に合わせてください。";
           stopBtn.style.display = "inline-block";
           return;
-        } catch (e) {
-          console.log("backCamera 失敗 → fallback2", e);
-        }
+        } catch (e) {}
       }
 
-      // 3. 最終手段：ユーザーにカメラ選択させる
+      // 3. 最終手段：ユーザーに選ばせる
       cameraSelect.style.display = "block";
       startSelectedBtn.style.display = "block";
 
@@ -141,43 +137,31 @@
     }
 
     /************************************************************
-     * スキャン成功時：親（GAS）へ結果を返す（postMessage）
+     * スキャン成功 → GAS へ postMessage
      ************************************************************/
-     function onScanSuccess(decodedText) {
+    function onScanSuccess(decodedText) {
       if (isRedirecting) return;
       isRedirecting = true;
-    
+
       statusEl.textContent = "読み取り成功: " + decodedText;
       if (navigator.vibrate) navigator.vibrate(100);
-    
+
       const message = { type: "SCAN_SUCCESS", code: decodedText };
-    
-      // ★ デバッグ表示（Vercel 側）
-      alert(
-        "Vercel → postMessage 送信\n" +
-        "type: " + message.type + "\n" +
-        "code: " + message.code + "\n" +
-        "opener: " + (window.opener ? "あり" : "なし")
-      );
-    
+
       try {
         if (window.opener) {
-          window.opener.postMessage(message, "https://script.google.com");
+          // ★ 送信先は "*"（GAS 側で origin をチェック）
+          window.opener.postMessage(message, "*");
         } else {
-          // ★ opener が null の場合（iPhone Safari 対策）
           window.parent.postMessage(message, "*");
         }
-      } catch (e) {
-        alert("postMessage 送信エラー: " + e);
-      }
-    
+      } catch (e) {}
+
       setTimeout(() => window.close(), 300);
     }
 
-
     function onScanFailure(error) {
-      // 読み取り失敗は無視（ログだけ残す）
-      // console.log("scan failure:", error);
+      // 読み取り失敗は無視
     }
 
     stopBtn.addEventListener("click", () => {
