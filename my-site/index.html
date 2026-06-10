@@ -143,28 +143,37 @@
     /************************************************************
      * スキャン成功時：親（GAS）へ結果を返す（postMessage）
      ************************************************************/
-    function onScanSuccess(decodedText) {
+     function onScanSuccess(decodedText) {
       if (isRedirecting) return;
       isRedirecting = true;
-
+    
       statusEl.textContent = "読み取り成功: " + decodedText;
       if (navigator.vibrate) navigator.vibrate(100);
-
-      // 親ウィンドウ（GAS）へ JAN / コードを返す
+    
+      const message = { type: "SCAN_SUCCESS", code: decodedText };
+    
+      // ★ デバッグ表示（Vercel 側）
+      alert(
+        "Vercel → postMessage 送信\n" +
+        "type: " + message.type + "\n" +
+        "code: " + message.code + "\n" +
+        "opener: " + (window.opener ? "あり" : "なし")
+      );
+    
       try {
-        window.opener.postMessage(
-          { type: "SCAN_SUCCESS", code: decodedText },
-          "https://script.google.com"   // ★ 必ず GAS の origin
-        );
+        if (window.opener) {
+          window.opener.postMessage(message, "https://script.google.com");
+        } else {
+          // ★ opener が null の場合（iPhone Safari 対策）
+          window.parent.postMessage(message, "*");
+        }
       } catch (e) {
-        console.log("postMessage 失敗:", e);
+        alert("postMessage 送信エラー: " + e);
       }
-
-      // 少し待ってから自分を閉じる
-      setTimeout(() => {
-        window.close();
-      }, 300);
+    
+      setTimeout(() => window.close(), 300);
     }
+
 
     function onScanFailure(error) {
       // 読み取り失敗は無視（ログだけ残す）
