@@ -49,7 +49,7 @@
 
   <button id="stopBtn" style="display:none;">スキャン停止</button>
 
-  <!-- ★ 追加：キャンセル（下4桁入力）ボタン -->
+  <!-- ★ 追加：キャンセル（下4桁入力） -->
   <button id="cancelBtn" style="margin-top: 8px; background:#555;">
     スキャンできない（下4桁入力）
   </button>
@@ -167,9 +167,15 @@
     }
 
     /************************************************************
-     * ★ 追加：キャンセル（下4桁入力） → GAS へ通知
+     * ★ キャンセル（下4桁入力） → GAS へ通知
      ************************************************************/
-    cancelBtn.onclick = () => {
+    cancelBtn.onclick = async () => {
+
+      // ★ カメラ停止（これがないと閉じない）
+      if (html5QrCode) {
+        try { await html5QrCode.stop(); } catch(e) {}
+      }
+
       try {
         const message = { type: "SCAN_CANCEL" };
 
