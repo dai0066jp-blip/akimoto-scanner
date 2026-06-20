@@ -49,18 +49,24 @@
 
   <button id="stopBtn" style="display:none;">スキャン停止</button>
 
+  <!-- ★ 追加：キャンセル（下4桁入力）ボタン -->
+  <button id="cancelBtn" style="margin-top: 8px; background:#555;">
+    スキャンできない（下4桁入力）
+  </button>
+
   <script>
     const statusEl = document.getElementById("status");
     const errorEl = document.getElementById("error");
     const stopBtn = document.getElementById("stopBtn");
     const cameraSelect = document.getElementById("cameraSelect");
     const startSelectedBtn = document.getElementById("startSelectedBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
 
     let html5QrCode = null;
     let isRedirecting = false;
 
     /************************************************************
-     * スキャナ起動（背面カメラ優先）ｖ6.10
+     * スキャナ起動（背面カメラ優先）
      ************************************************************/
     async function startScanner() {
       const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
@@ -72,7 +78,6 @@
         return;
       }
 
-      // 1. facingMode: environment
       try {
         await html5QrCode.start(
           { facingMode: "environment" },
@@ -85,7 +90,6 @@
         return;
       } catch (e) {}
 
-      // 2. ラベルから背面カメラを探す
       let backCamera = cameras.find(cam =>
         (cam.label || "").toLowerCase().includes("back") ||
         (cam.label || "").toLowerCase().includes("rear") ||
@@ -106,7 +110,6 @@
         } catch (e) {}
       }
 
-      // 3. 最終手段：ユーザーに選ばせる
       cameraSelect.style.display = "block";
       startSelectedBtn.style.display = "block";
 
@@ -150,7 +153,6 @@
 
       try {
         if (window.opener) {
-          // ★ 送信先は "*"（GAS 側で origin をチェック）
           window.opener.postMessage(message, "*");
         } else {
           window.parent.postMessage(message, "*");
@@ -163,6 +165,23 @@
     function onScanFailure(error) {
       // 読み取り失敗は無視
     }
+
+    /************************************************************
+     * ★ 追加：キャンセル（下4桁入力） → GAS へ通知
+     ************************************************************/
+    cancelBtn.onclick = () => {
+      try {
+        const message = { type: "SCAN_CANCEL" };
+
+        if (window.opener) {
+          window.opener.postMessage(message, "*");
+        } else {
+          window.parent.postMessage(message, "*");
+        }
+      } catch (e) {}
+
+      window.close();
+    };
 
     stopBtn.addEventListener("click", () => {
       if (html5QrCode) {
