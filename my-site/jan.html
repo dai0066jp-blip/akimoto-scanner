@@ -48,7 +48,7 @@
     /* 赤線ガイド */
     .scan-line {
       position: absolute;
-      top: 55%;             /* ★ ITF に合わせて少し下に */
+      top: 50%;             /* ★ ITF に合わせて少し下に */
       left: 5%;
       width: 90%;
       height: 2px;
@@ -171,12 +171,11 @@
     
         /* ★ 認識範囲：JAN が入るように上下を広げる */
         area: {
-          top: "20%",     // 30 → 20 に変更（JAN の高さを確保）
+          top: "10%",
           right: "10%",
           left: "10%",
-          bottom: "20%"   // 30 → 20 に変更
-        },
-    
+          bottom: "10%"
+        }    
         /* ★ patchSize を medium に変更（JAN が読めるようになる） */
         locator: {
           patchSize: "medium",   // ← ITF も読めて JAN も読める最適値
