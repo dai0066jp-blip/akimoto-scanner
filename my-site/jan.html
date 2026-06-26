@@ -157,38 +157,36 @@
           name: "Live",
           type: "LiveStream",
           target: document.querySelector('#interactive'),
-          constraints: Object.assign({
-            facingMode: "environment"
-          }, videoConstraints)
+          constraints: {
+            facingMode: "environment",
+            ...(videoConstraints.deviceId ? { deviceId: videoConstraints.deviceId } : {})
+          }
         },
         decoder: {
           readers: ["ean_reader", "ean_8_reader", "itf_reader"]
         },
-    
-        /* ★ JAN/ITF 両対応の最適バランス */
         locate: true,
-    
-        /* ★ 認識範囲：JAN が入るように上下を広げる */
         area: {
           top: "10%",
           right: "10%",
           left: "10%",
           bottom: "10%"
-        }    
-        /* ★ patchSize を medium に変更（JAN が読めるようになる） */
+        },
         locator: {
-          patchSize: "medium",   // ← ITF も読めて JAN も読める最適値
+          patchSize: "medium",
           halfSample: true
         }
       }, function(err) {
-        if (!err) {
-          Quagga.start();
-          Quagga.onDetected(onScanSuccess);
+        if (err) {
+          errorEl.textContent = "カメラ起動に失敗: " + err;
+          console.error(err);
+          return callback(err);
         }
-        callback(err);
+        Quagga.start();
+        Quagga.onDetected(onScanSuccess);
+        callback(null);
       });
     }
-
 
     /************************************************************
      * カメラ選択
