@@ -24,15 +24,14 @@
     h1 { font-size: 18px; margin: 8px 0 4px; text-align: center; }
     p { font-size: 13px; margin: 0 0 12px; text-align: center; color: #ccc; }
 
-    /* カメラ映像エリア */
     #interactive.viewport {
       width: 100%;
       max-width: 420px;
-      height: 260px;     /* ★ 追加：縦を固定 */
+      height: 260px;
       margin-top: 8px;
       position: relative;
       background: #000;
-      overflow: hidden;   /* ★ はみ出しを切る */
+      overflow: hidden;
       border-radius: 8px;
     }
 
@@ -41,14 +40,13 @@
       top: 0;
       left: 0;
       width: 100%;
-      height: 100%;   /* ★ auto → 100% に変更 */
-      object-fit: cover;  /* ★ 画角を自然にトリミング */
+      height: 100%;
+      object-fit: cover;
     }
 
-    /* 赤線ガイド */
     .scan-line {
       position: absolute;
-      top: 50%;             /* ★ ITF に合わせて少し下に */
+      top: 50%;
       left: 5%;
       width: 90%;
       height: 2px;
@@ -71,7 +69,6 @@
     button { background: #00b894; color: #fff; }
     select { background: #222; color: #fff; }
 
-    /* 下4桁入力ボタンを大きく */
     #cancelBtn {
       margin-top: 28px;
       padding: 14px 22px;
@@ -107,6 +104,46 @@
     const cancelBtn = document.getElementById("cancelBtn");
 
     let isRedirecting = false;
+
+    /************************************************************
+     * 誤読防止バリデーション（連続一致）
+     ************************************************************/
+    let lastCode = "";
+    let matchCount = 0;
+    const REQUIRED_MATCHES = 2; // 2回連続一致で確定
+    const VALID_LENGTHS = [8, 13, 14]; // JAN8 / JAN13 / ITF14
+    let isLocked = false;
+
+    function onValidatedDetected(result) {
+      if (isLocked) return;
+
+      const code = result.codeResult.code;
+      if (!code) return;
+
+      // 桁数フィルタ
+      if (!VALID_LENGTHS.includes(code.length)) return;
+
+      // 連続一致チェック
+      if (code === lastCode) {
+        matchCount++;
+      } else {
+        lastCode = code;
+        matchCount = 1;
+      }
+
+      if (matchCount >= REQUIRED_MATCHES) {
+        isLocked = true;
+        setTimeout(() => isLocked = false, 300);
+
+        Quagga.offDetected();
+        Quagga.stop();
+
+        onScanSuccess({ codeResult: { code } });
+
+        matchCount = 0;
+        lastCode = "";
+      }
+    }
 
     /************************************************************
      * スキャナ起動（背面カメラ優先）
@@ -149,7 +186,7 @@
     }
 
     /************************************************************
-     * Quagga2 初期化（JAN/ITF 最適化）
+     * Quagga2 初期化
      ************************************************************/
     function initQuagga(videoConstraints, callback) {
       Quagga.init({
@@ -183,42 +220,9 @@
           return callback(err);
         }
         Quagga.start();
-        Quagga.onDetected(onScanSuccess);
+        Quagga.onDetected(onValidatedDetected);  // ← 差し替え済み
         callback(null);
       });
-    }
-
-    /************************************************************
-     * カメラ選択
-     ************************************************************/
-    function showCameraSelect(devices) {
-      cameraSelect.style.display = "block";
-      startSelectedBtn.style.display = "block";
-      cameraSelect.innerHTML = "";
-
-      devices.forEach(cam => {
-        const opt = document.createElement("option");
-        opt.value = cam.deviceId;
-        opt.textContent = cam.label || `カメラ (${cam.deviceId.slice(0,5)})`;
-        cameraSelect.appendChild(opt);
-      });
-
-      startSelectedBtn.onclick = () => {
-        const id = cameraSelect.value;
-        try { Quagga.stop(); } catch(e) {}
-
-        initQuagga({ deviceId: id }, function(err) {
-          if (!err) {
-            statusEl.textContent = "スキャン中...";
-            stopBtn.style.display = "inline-block";
-            cameraSelect.style.display = "none";
-            startSelectedBtn.style.display = "none";
-            errorEl.textContent = "";
-          } else {
-            errorEl.textContent = "起動に失敗: " + err;
-          }
-        });
-      };
     }
 
     /************************************************************
