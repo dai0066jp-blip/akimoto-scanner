@@ -2,10 +2,10 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>スキャン画面（秋本・外付・JAN版）</title>
+  <title>スキャン画面（秋本・外付・JAN/ITF版）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- ★ Quagga2 ライブラリの読み込み（無料） -->
+  <!-- Quagga2 -->
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 
   <style>
@@ -23,8 +23,8 @@
     }
     h1 { font-size: 18px; margin: 8px 0 4px; text-align: center; }
     p { font-size: 13px; margin: 0 0 12px; text-align: center; color: #ccc; }
-    
-    /* ★ Quagga2用のビデオ表示エリアのスタイル設定 */
+
+    /* カメラ映像エリア */
     #interactive.viewport {
       width: 100%;
       max-width: 420px;
@@ -35,14 +35,17 @@
       border-radius: 8px;
     }
     #interactive.viewport video {
+      position: absolute;   /* ★ 赤線を前面に */
+      top: 0;
+      left: 0;
       width: 100%;
       height: auto;
-      vertical-align: top;
     }
-    /* ★ JANコードを合わせやすくするための赤いスキャン補助線 */
+
+    /* 赤線ガイド */
     .scan-line {
       position: absolute;
-      top: 50%;
+      top: 55%;             /* ★ ITF に合わせて少し下に */
       left: 5%;
       width: 90%;
       height: 2px;
@@ -52,8 +55,9 @@
       z-index: 10;
     }
 
-    #status { margin-top: 12px; font-size: 14px; text-align: center; color: #8be9fd; word-break: break-all; }
+    #status { margin-top: 12px; font-size: 14px; text-align: center; color: #8be9fd; }
     #error { margin-top: 4px; font-size: 12px; text-align: center; color: #ff5555; }
+
     button, select {
       margin-top: 16px;
       padding: 10px 18px;
@@ -63,17 +67,25 @@
     }
     button { background: #00b894; color: #fff; }
     select { background: #222; color: #fff; }
+
+    /* 下4桁入力ボタンを大きく */
+    #cancelBtn {
+      margin-top: 28px;
+      padding: 14px 22px;
+      font-size: 16px;
+      background: #666;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
   <h1>バーコード スキャン</h1>
-  <p>カメラへのアクセスを許可して、赤い線にバーコードを合わせてください。</p>
+  <p>赤い線にバーコードを合わせてください。</p>
 
-  <!-- ★ html5-qrcode用の id="reader" を、Quagga2用の枠に変更 -->
   <div id="interactive" class="viewport">
     <div class="scan-line"></div>
   </div>
-  
+
   <div id="status">カメラ起動中...</div>
   <div id="error"></div>
 
@@ -81,9 +93,7 @@
   <button id="startSelectedBtn" style="display:none;">このカメラで開始</button>
   <button id="stopBtn" style="display:none;">スキャン停止</button>
 
-  <button id="cancelBtn" style="margin-top: 8px; background:#555;">
-    スキャンできない（下4桁入力）
-  </button>
+  <button id="cancelBtn">スキャンできない（下4桁入力）</button>
 
   <script>
     const statusEl = document.getElementById("status");
@@ -99,7 +109,6 @@
      * スキャナ起動（背面カメラ優先）
      ************************************************************/
     async function startScanner() {
-      // 端末のカメラ一覧を取得
       const devices = await navigator.mediaDevices.enumerateDevices().catch(() => null);
       const videoDevices = devices ? devices.filter(d => d.kind === 'videoinput') : [];
 
@@ -108,15 +117,13 @@
         return;
       }
 
-      // 1. まずは「背面カメラ（facingMode: environment）」で起動を試みる
       initQuagga({ facingMode: "environment" }, function(err) {
         if (!err) {
-          statusEl.textContent = "スキャン中... 赤い線にコードを合わせてください。";
+          statusEl.textContent = "スキャン中...";
           stopBtn.style.display = "inline-block";
           return;
         }
 
-        // 2. 失敗した場合は、端末内の「back」や「rear」の文字を持つカメラを探す
         let backCamera = videoDevices.find(cam =>
           (cam.label || "").toLowerCase().includes("back") ||
           (cam.label || "").toLowerCase().includes("rear") ||
@@ -126,11 +133,10 @@
         if (backCamera) {
           initQuagga({ deviceId: backCamera.deviceId }, function(err2) {
             if (!err2) {
-              statusEl.textContent = "スキャン中... 赤い線にコードを合わせてください。";
+              statusEl.textContent = "スキャン中...";
               stopBtn.style.display = "inline-block";
               return;
             }
-            // 両方失敗したらカメラ選択のプルダウンを出す
             showCameraSelect(videoDevices);
           });
         } else {
@@ -140,7 +146,7 @@
     }
 
     /************************************************************
-     * Quagga2の初期化・起動関数
+     * Quagga2 初期化（JAN/ITF 最適化）
      ************************************************************/
     function initQuagga(videoConstraints, callback) {
       Quagga.init({
@@ -154,14 +160,27 @@
           }, videoConstraints)
         },
         decoder: {
-          // JANコード（EAN-13, EAN-8）のみを対象に指定してノイズを無視する
-          readers: ["ean_reader", "ean_8_reader"]
+          readers: ["ean_reader", "ean_8_reader", "itf_reader"],
+          debug: false
         },
-        locate: true // ★ 周辺ノイズからバーコードだけを探し出す重要機能
+        locate: true,
+
+        /* ★ ITF/JAN 精度最大化：中央だけ読む */
+        area: {
+          top: "30%",
+          right: "10%",
+          left: "10%",
+          bottom: "30%"
+        },
+
+        /* ★ ITF の太線に強くする */
+        locator: {
+          patchSize: "large",   // x-small / small / medium / large / x-large
+          halfSample: true
+        }
       }, function(err) {
         if (!err) {
           Quagga.start();
-          // 読み取り成功時のイベントを設定
           Quagga.onDetected(onScanSuccess);
         }
         callback(err);
@@ -169,12 +188,12 @@
     }
 
     /************************************************************
-     * カメラ選択プルダウンの表示
+     * カメラ選択
      ************************************************************/
     function showCameraSelect(devices) {
       cameraSelect.style.display = "block";
       startSelectedBtn.style.display = "block";
-      cameraSelect.innerHTML = ""; // 初期化
+      cameraSelect.innerHTML = "";
 
       devices.forEach(cam => {
         const opt = document.createElement("option");
@@ -185,83 +204,71 @@
 
       startSelectedBtn.onclick = () => {
         const id = cameraSelect.value;
-        // 動いているカメラがあれば一度停止
         try { Quagga.stop(); } catch(e) {}
-        
+
         initQuagga({ deviceId: id }, function(err) {
           if (!err) {
-            statusEl.textContent = "スキャン中... 赤い線にコードを合わせてください。";
+            statusEl.textContent = "スキャン中...";
             stopBtn.style.display = "inline-block";
             cameraSelect.style.display = "none";
             startSelectedBtn.style.display = "none";
             errorEl.textContent = "";
           } else {
-            errorEl.textContent = "選択したカメラの起動に失敗しました: " + err;
+            errorEl.textContent = "起動に失敗: " + err;
           }
         });
       };
     }
 
     /************************************************************
-     * スキャン成功 → GAS へ postMessage
+     * スキャン成功
      ************************************************************/
     function onScanSuccess(result) {
       if (isRedirecting) return;
-      
+
       const decodedText = result.codeResult.code;
       if (!decodedText) return;
 
       isRedirecting = true;
       statusEl.textContent = "読み取り成功: " + decodedText;
-      
+
       if (navigator.vibrate) navigator.vibrate(100);
 
-      // カメラを即時停止
       try { Quagga.stop(); } catch(e) {}
 
       const message = { type: "SCAN_SUCCESS", code: decodedText };
 
       try {
-        if (window.opener) {
-          window.opener.postMessage(message, "*");
-        } else {
-          window.parent.postMessage(message, "*");
-        }
+        if (window.opener) window.opener.postMessage(message, "*");
+        else window.parent.postMessage(message, "*");
       } catch (e) {}
 
       setTimeout(() => window.close(), 300);
     }
 
     /************************************************************
-     * キャンセル（下4桁入力） → GAS へ通知
+     * 下4桁入力
      ************************************************************/
     cancelBtn.onclick = () => {
-      // カメラ停止
       try { Quagga.stop(); } catch(e) {}
 
       const message = { type: "SCAN_CANCEL" };
 
       try {
-        if (window.opener) {
-          window.opener.postMessage(message, "*");
-        } else {
-          window.parent.postMessage(message, "*");
-        }
+        if (window.opener) window.opener.postMessage(message, "*");
+        else window.parent.postMessage(message, "*");
       } catch (e) {}
 
       window.close();
     };
 
-    /************************************************************
-     * 手動停止ボタン
-     ************************************************************/
     stopBtn.addEventListener("click", () => {
       try {
         Quagga.stop();
-        statusEl.textContent = "スキャンを停止しました。";
+        statusEl.textContent = "スキャン停止";
         stopBtn.style.display = "none";
       } catch (err) {
-        errorEl.textContent = "停止に失敗しました: " + err;
+        errorEl.textContent = "停止失敗: " + err;
       }
     });
 
