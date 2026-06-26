@@ -28,18 +28,21 @@
     #interactive.viewport {
       width: 100%;
       max-width: 420px;
+      height: 260px;     /* ★ 追加：縦を固定 */
       margin-top: 8px;
       position: relative;
       background: #000;
-      overflow: hidden;
+      overflow: hidden;   /* ★ はみ出しを切る */
       border-radius: 8px;
     }
+
     #interactive.viewport video {
-      position: absolute;   /* ★ 赤線を前面に */
+      position: absolute;
       top: 0;
       left: 0;
       width: 100%;
-      height: auto;
+      height: 100%;   /* ★ auto → 100% に変更 */
+      object-fit: cover;  /* ★ 画角を自然にトリミング */
     }
 
     /* 赤線ガイド */
