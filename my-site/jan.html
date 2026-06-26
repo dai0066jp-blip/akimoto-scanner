@@ -158,8 +158,7 @@
           type: "LiveStream",
           target: document.querySelector('#interactive'),
           constraints: Object.assign({
-            width: 640,
-            height: 480
+            facingMode: "environment"
           }, videoConstraints)
         },
         decoder: {
