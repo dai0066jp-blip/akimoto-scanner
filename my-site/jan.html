@@ -163,22 +163,23 @@
           }, videoConstraints)
         },
         decoder: {
-          readers: ["ean_reader", "ean_8_reader", "itf_reader"],
-          debug: false
+          readers: ["ean_reader", "ean_8_reader", "itf_reader"]
         },
+    
+        /* ★ JAN/ITF 両対応の最適バランス */
         locate: true,
-
-        /* ★ ITF/JAN 精度最大化：中央だけ読む */
+    
+        /* ★ 認識範囲：JAN が入るように上下を広げる */
         area: {
-          top: "30%",
+          top: "20%",     // 30 → 20 に変更（JAN の高さを確保）
           right: "10%",
           left: "10%",
-          bottom: "30%"
+          bottom: "20%"   // 30 → 20 に変更
         },
-
-        /* ★ ITF の太線に強くする */
+    
+        /* ★ patchSize を medium に変更（JAN が読めるようになる） */
         locator: {
-          patchSize: "large",   // x-small / small / medium / large / x-large
+          patchSize: "medium",   // ← ITF も読めて JAN も読める最適値
           halfSample: true
         }
       }, function(err) {
@@ -189,6 +190,7 @@
         callback(err);
       });
     }
+
 
     /************************************************************
      * カメラ選択
