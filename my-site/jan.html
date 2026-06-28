@@ -200,17 +200,27 @@
           }
         },
         decoder: {
-          readers: ["ean_reader", "ean_8_reader", "itf_reader"]
+          readers: [
+            "ean_reader",
+            "ean_8_reader",
+            {
+              format: "i2of5_reader",
+              config: {
+                checksum: false,
+                normalizeBarSpace: true
+              }
+            }
+          ]
         },
         locate: true,
         area: {
-          top: "10%",
-          right: "10%",
-          left: "10%",
-          bottom: "10%"
+          top: "5%",
+          right: "5%",
+          left: "5%",
+          bottom: "5%"
         },
         locator: {
-          patchSize: "medium",
+          patchSize: "large",
           halfSample: true
         }
       }, function(err) {
