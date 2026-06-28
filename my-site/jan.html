@@ -239,6 +239,11 @@
      * スキャン成功
      ************************************************************/
     function onScanSuccess(result) {
+      // ★ ここで状態リセット
+      lastCode = "";
+      matchCount = 0;
+      isLocked = false;
+      
       if (isRedirecting) return;
 
       const decodedText = result.codeResult.code;
