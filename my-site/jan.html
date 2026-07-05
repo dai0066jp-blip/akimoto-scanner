@@ -188,52 +188,99 @@
     /************************************************************
      * Quagga2 初期化
      ************************************************************/
-    function initQuagga(videoConstraints, callback) {
-      Quagga.init({
-        inputStream: {
-          name: "Live",
-          type: "LiveStream",
-          target: document.querySelector('#interactive'),
-          constraints: {
-            facingMode: "environment",
-            ...(videoConstraints.deviceId ? { deviceId: videoConstraints.deviceId } : {})
-          }
-        },
-        decoder: {
-          readers: [
-            "ean_reader",
-            "ean_8_reader",
-            {
-              format: "i2of5_reader",
-              config: {
-                checksum: false,
-                normalizeBarSpace: true
-              }
+/************************************************************
+ * Quagga2 初期化（精度優先＋安全エラー処理＋暗所対策）
+ ************************************************************/
+  function initQuagga(videoConstraints, callback) {
+  
+    const config = {
+      inputStream: {
+        name: "Live",
+        type: "LiveStream",
+        target: document.querySelector('#interactive'),
+        constraints: {
+          facingMode: "environment",
+          ...(videoConstraints.deviceId ? { deviceId: videoConstraints.deviceId } : {})
+        }
+      },
+  
+      decoder: {
+        readers: [
+          "ean_reader",
+          "ean_8_reader",
+          {
+            format: "i2of5_reader",
+            config: {
+              checksum: true,              // ★ ITF精度UP
+              normalizeBarSpace: true,
+              minQuietZoneWidth: 10        // ★ 誤読防止
             }
-          ]
-        },
-        locate: true,
-        area: {
-          top: "5%",
-          right: "5%",
-          left: "5%",
-          bottom: "5%"
-        },
-        locator: {
-          patchSize: "large",
-          halfSample: true
+          }
+        ]
+      },
+  
+      // ★ locate OFF → 誤読激減（速度は少し落ちる）
+      locate: false,
+  
+      // ★ 読み取り範囲を狭める（精度が劇的に上がる）
+      area: {
+        top: "30%",
+        right: "10%",
+        left: "10%",
+        bottom: "30%"
+      },
+  
+      locator: {
+        patchSize: "medium",   // ★ 精度優先
+        halfSample: false      // ★ 画像縮小しない → 暗所でも強い
+      }
+    };
+  
+    Quagga.init(config, async function(err) {
+      if (err) {
+        console.error("Quagga init error:", err);
+  
+        // ★ エラー種類別メッセージ
+        if (err.name === "NotAllowedError") {
+          errorEl.textContent = "カメラの使用が許可されていません。設定を確認してください。";
+        } else if (err.name === "NotFoundError") {
+          errorEl.textContent = "カメラが見つかりません。デバイスを確認してください。";
+        } else {
+          errorEl.textContent = "カメラ起動に失敗しました。再試行してください。";
         }
-      }, function(err) {
-        if (err) {
-          errorEl.textContent = "カメラ起動に失敗: " + err;
-          console.error(err);
-          return callback(err);
+  
+        // ★ 半起動状態を防ぐ
+        try { Quagga.stop(); } catch(e) {}
+  
+        stopBtn.style.display = "none";
+        statusEl.textContent = "再試行できます。";
+  
+        return; // callback は使わない
+      }
+  
+      // ★ 正常起動
+      Quagga.start();
+      Quagga.onDetected(onValidatedDetected);
+  
+      statusEl.textContent = "スキャン中...";
+      stopBtn.style.display = "inline-block";
+  
+      /************************************************************
+       * ★ 暗所対策：torch（ライト）ON（対応端末のみ）
+       ************************************************************/
+      try {
+        const track = Quagga.cameraAccess.getActiveTrack();
+        if (track && track.applyConstraints) {
+          await track.applyConstraints({ advanced: [{ torch: true }] });
         }
-        Quagga.start();
-        Quagga.onDetected(onValidatedDetected);  // ← 差し替え済み
-        callback(null);
-      });
-    }
+      } catch (e) {
+        console.warn("Torch unavailable:", e);
+      }
+  
+      callback && callback(null);
+    });
+  }
+
 
     /************************************************************
      * スキャン成功
